@@ -1,7 +1,14 @@
 cmake_minimum_required(VERSION 3.10)
-project(GPU-MB LANGUAGES CXX CUDA)
+project(mbSuite)
 
-set(CMAKE_CUDA_ARCHITECTURES "50;61;75")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
+enable_testing()
 
-add_subdirectory(code)
+option(BUILD_GPU "Build GPU Microbenchmarks" OFF)
+
+include_directories(code-common)
+
+if (BUILD_GPU)
+    add_subdirectory(code-gpu)
+endif()
+
+add_subdirectory(code-cpu)

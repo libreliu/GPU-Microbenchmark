@@ -1,0 +1,6 @@
+project(mbSuite-GPU LANGUAGES CXX CUDA)
+
+set(CMAKE_CUDA_ARCHITECTURES "50;61;75")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
+
+add_executable(test test.cu)
