@@ -22,13 +22,13 @@ double timeit(_Args&&... args) {
     return diff.count();
 }
 
-template<typename _Obj_t, typename _LoopCount_t>
-__declspec(noinline) void do_chase(_Obj_t &res, _Obj_t* arr, _LoopCount_t numLoop) {
-    _Obj_t idx = 0;
-    for (_LoopCount_t i = 0; i < numLoop; i++) {
-        idx = arr[idx];
+__declspec(noinline)
+void do_chase(void* &res, void* start, size_t numLoop) {
+    void* p = start;
+    for (size_t i = 0; i < numLoop; i++) {
+        p = *(void**)(p);
     }
-    res = idx;
+    res = p;
 }
 
 template<typename _Obj_t>
