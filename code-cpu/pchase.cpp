@@ -12,7 +12,6 @@
 // return time measured in sec
 template<auto _Func, typename ..._Args>
 double timeit(_Args&&... args) {
-
     auto start = std::chrono::high_resolution_clock::now();
 
     _Func(std::forward<_Args>(args)...);
@@ -24,7 +23,7 @@ double timeit(_Args&&... args) {
 }
 
 template<typename _Obj_t, typename _LoopCount_t>
-void do_chase(_Obj_t &res, _Obj_t* arr, _LoopCount_t numLoop) {
+__declspec(noinline) void do_chase(_Obj_t &res, _Obj_t* arr, _LoopCount_t numLoop) {
     _Obj_t idx = 0;
     for (_LoopCount_t i = 0; i < numLoop; i++) {
         idx = arr[idx];
@@ -34,6 +33,21 @@ void do_chase(_Obj_t &res, _Obj_t* arr, _LoopCount_t numLoop) {
 
 template<typename _Obj_t>
 _Obj_t* prepare_full_random(_Obj_t *&arr, size_t size) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distrib(0, size - 1);
+
+    arr = (_Obj_t*)malloc(size * sizeof(_Obj_t));
+    for (size_t i = 0; i < size; i++) {
+        arr[i] = distrib(gen);
+    }
+
+    return arr;
+}
+
+
+template<typename _Obj_t>
+_Obj_t* prepare_chase(_Obj_t *&arr, size_t size) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> distrib(0, size - 1);
@@ -62,7 +76,7 @@ int main(int argc, char *argv[]) {
     int numRepeats = std::atoi(argv[2]);
 
     double prepareTime, chaseTime;
-    int chaseLoopCount = 1000000;
+    int chaseLoopCount = 100;
 
     nlohmann::json result = {
         {"type", "pchase-cpu"},
@@ -73,17 +87,19 @@ int main(int argc, char *argv[]) {
     for (int repeatIdx = 0; repeatIdx < numRepeats; repeatIdx++) {
         result["data"].push_back(nlohmann::json::object());
         result["data"].back()["avgChaseTime"] = nlohmann::json::array();
+        result["data"].back()["lastIdx"] = nlohmann::json::array();
 
         if (repeatIdx == 0) {
             result["data"].back()["size"] = nlohmann::json::array();
         }
-        
 
         auto &dataArray = result["data"].back()["avgChaseTime"];
+        auto &lastIdxArray = result["data"].back()["lastIdx"];
         auto &sizeArray = result["data"][0]["size"];
 
-        for (int i = 1  * KiB; i <= 1 * MiB; i += 1 * KiB) {
-            int *arr, lastIdx;
+        int *arr = nullptr, lastIdx;
+        for (int i = 1  * KiB; i <= 8 * MiB; i += 128 * KiB) {
+            
             prepareTime = timeit<prepare_full_random<int>>(arr, i);
             chaseTime = timeit<do_chase<int, int>>(lastIdx, arr, chaseLoopCount);
             cleanup_chase<int>(arr);
@@ -94,6 +110,7 @@ int main(int argc, char *argv[]) {
                 i, chaseTime * 1e6 / chaseLoopCount, prepareTime * 1e6, chaseTime * 1e6, lastIdx);
 
             dataArray.push_back(avgChaseTime);
+            lastIdxArray.push_back(lastIdx);
 
             if (repeatIdx == 0) {
                 sizeArray.push_back(i);
