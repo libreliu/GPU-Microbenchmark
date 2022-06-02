@@ -11,15 +11,19 @@
 #define KiB 1024
 #define MiB (1024 * KiB)
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER)
 #define NOINLINE __declspec(noinline)
 
 #include <windows.h>
 
 #define ALIGNED_ALLOC(align, size) _aligned_malloc(size, align)
 #define ALIGNED_FREE(x) _aligned_free(x)
-#else if
+#elif defined(__GNUC__)
 // TODO: implement me
+
+#else
+#error "Implement platform macros"
+
 #endif
 
 
@@ -162,53 +166,70 @@ int main(int argc, char *argv[]) {
     int numRepeats = std::atoi(argv[2]);
 
     double prepareTime, chaseTime, verifyTime;
-    constexpr int chaseLoopCount = 1 << 24;
-    double cpuFreq = 3.0 * 1000 * 1000 * 1000; // 3GHz
+    constexpr int chaseLoopCountBase = 1 << 26;
+    double cpuFreq = 2.9 * 1000 * 1000 * 1000; // 2.9GHz
     double cpuCycleTime = 1.0 / cpuFreq;
 
     nlohmann::json result = {
         {"type", "pchase-cpu"},
-        {"numRepeats", numRepeats},
-        {"data", nlohmann::json::array()}
+        {"repeats", nlohmann::json::array()}, /* p */
+        {"strides", nlohmann::json::array()}, /* q */
+        {"workingSets", nlohmann::json::array()}, /* r */
+        {"avgChaseTime", nlohmann::json::array()}
     };
 
+    std::vector<size_t> repeats, strides, workingSets;
+
+    for (int stride = 8; stride <= 128; stride *= 2) {
+        strides.push_back(stride);
+        result["strides"].push_back(stride);
+    }
+
     for (int repeatIdx = 0; repeatIdx < numRepeats; repeatIdx++) {
-        result["data"].push_back(nlohmann::json::object());
-        result["data"].back()["avgChaseTime"] = nlohmann::json::array();
-        result["data"].back()["lastIdx"] = nlohmann::json::array();
+        repeats.push_back(repeatIdx);
+        result["repeats"].push_back(repeatIdx);
+    }
 
-        if (repeatIdx == 0) {
-            result["data"].back()["size"] = nlohmann::json::array();
-        }
+    for (int setSize = 128; setSize <= 256 * MiB; setSize *= 2) {
+        workingSets.push_back(setSize);
+        result["workingSets"].push_back(setSize);
+    }
 
-        auto &dataArray = result["data"].back()["avgChaseTime"];
-        auto &lastIdxArray = result["data"].back()["lastIdx"];
-        auto &sizeArray = result["data"][0]["size"];
+    auto &chaseTimeArray = result["avgChaseTime"];
+    Node *arr = nullptr, *lastPtr = nullptr, *lastPtrWarmUp = nullptr;
+    for (auto repeatIdx: repeats) {
+        for (auto stride: strides) {
+            for (auto setSize: workingSets) {
+                
+                bool success = false;
+                prepareTime = timeit<prepare_full_random<Node>>(arr, stride, setSize);
+                verifyTime = timeit<verify_node_list<Node>>(arr, stride, setSize, success);
+                assert(success);
 
-        Node *arr = nullptr, *lastPtr = nullptr;
-        for (int i = 64; i <= 128 * MiB; i *= 2) {
-            bool success = false;
-            prepareTime = timeit<prepare_full_random<Node>>(arr, 64, i);
-            verifyTime = timeit<verify_node_list<Node>>(arr, 64, i, success);
-            assert(success);
+                // warmup
+                do_chase<Node, (chaseLoopCountBase << 3)>(arr, lastPtrWarmUp);
 
-            chaseTime = timeit<do_chase<Node, chaseLoopCount>>(arr, lastPtr);
-            cleanup_node_list<Node>(arr);
-            
-            double avgChaseTime = chaseTime / chaseLoopCount;
-            std::string prettySize = pretty_size(i);
-            printf("[%s]: Avg-Chase: %lf us - about %lf cycles (Prepare: %lf us, Chase: %lf us, lastPtr: %lld)\n",
-                prettySize.c_str(), avgChaseTime * 1e6, avgChaseTime / cpuCycleTime, prepareTime * 1e6, chaseTime * 1e6, lastPtr - arr);
+                double avgChaseTime;
+                if (setSize <= 256 * KiB) {
+                    chaseTime = timeit<do_chase<Node, (chaseLoopCountBase << 4)>>(arr, lastPtr);
+                    avgChaseTime = chaseTime / (chaseLoopCountBase << 4);
+                } else {
+                    chaseTime = timeit<do_chase<Node, chaseLoopCountBase>>(arr, lastPtr);
+                    avgChaseTime = chaseTime / chaseLoopCountBase;
+                }
+                
+                cleanup_node_list<Node>(arr);
+                
+                
+                std::string prettySize = pretty_size(setSize);
+                printf("[%s]: Stride: %d, Avg-Chase: %lf us (~%lf cycles) (Prepare: %lf us, Chase: %lf us, lastPtr: %lld, lastPtrWarmUp: %lld)\n",
+                    prettySize.c_str(), stride, avgChaseTime * 1e6, avgChaseTime / cpuCycleTime, prepareTime * 1e6, chaseTime * 1e6, lastPtr - arr, lastPtrWarmUp - arr);
 
-            dataArray.push_back(avgChaseTime);
-            lastIdxArray.push_back((size_t)(lastPtr - arr));
-
-            if (repeatIdx == 0) {
-                sizeArray.push_back(i);
+                chaseTimeArray.push_back(avgChaseTime);
             }
         }
     }
-    
+
     std::ofstream outStream(outputJsonPath);
     result >> outStream;
 
