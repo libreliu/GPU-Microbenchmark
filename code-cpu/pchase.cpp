@@ -20,7 +20,12 @@
 #define ALIGNED_FREE(x) _aligned_free(x)
 #elif defined(__GNUC__)
 // TODO: implement me
+#define NOINLINE __attribute__ ((noinline))
 
+#include <unistd.h>
+
+#define ALIGNED_ALLOC(align, size) aligned_alloc(align, size)
+#define ALIGNED_FREE(x) free(x)
 #else
 #error "Implement platform macros"
 
@@ -44,12 +49,13 @@ size_t get_page_size() {
         return pageSize;
     }
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER)
     SYSTEM_INFO si;
     GetSystemInfo(&si);
     pageSize = si.dwPageSize;
-#else if 
-    // TODO: implement me
+#elif defined(__GNUC__)
+    long sz = sysconf(_SC_PAGESIZE);
+    pageSize = sz;
 #endif
 
     printf("The page size for this system is %zu bytes.\n", pageSize);
@@ -231,7 +237,7 @@ int main(int argc, char *argv[]) {
     }
 
     std::ofstream outStream(outputJsonPath);
-    result >> outStream;
+    outStream << result;
 
     outStream.close();
 
