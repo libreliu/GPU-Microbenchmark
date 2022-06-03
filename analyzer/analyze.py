@@ -42,16 +42,20 @@ def analyze_pchase_cpu(jsonData):
         # print("avgChaseTimeMean")
 
         handle = ax.errorbar(
-            workingSets, avgChaseTimeMean, yerr=avgChaseTimeStd,
+            workingSets, avgChaseTimeMean * 1e9, yerr=avgChaseTimeStd * 1e9,
             fmt = "-", ecolor = "red", elinewidth = 0.5, capsize = 2, capthick = 1
         )
         legendHandles.append(handle)
 
         ax.set_xscale('log', base=2)
-        ax.set_yscale('log', base=10)
-        ax.set_ylabel('Time Consumed')
+        # ax.set_yscale('log', base=10)
+        ax.set_ylabel('Time Consumed (ns)')
+
+        # For 10700K
+    ax.vlines([64 * 1024, 256 * 1024, 16 * 1024 * 1024], 0, 80, linestyle='--', color='black')
     
     plt.legend(handles=legendHandles, labels=[f"Stride {i}" for i in strides], loc='best')
+    plt.title('CPU Pointer Chasing')
 
     plt.xticks(
         workingSets,
